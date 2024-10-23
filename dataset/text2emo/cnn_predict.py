@@ -14,7 +14,7 @@ loaded_model = load_model(model_path)
 # 加载Tokenizer (需要与训练时使用的Tokenizer相同)
 # 假设你已经将Tokenizer保存到文件tokenizer.pickle
 import pickle
-with open('tokenizer.pickle', 'rb') as handle:
+with open('cnn_tokenizer.pickle', 'rb') as handle:
     tokenizer = pickle.load(handle)
 
 # 定义情感标签映射 (需要与训练时使用的映射相同)

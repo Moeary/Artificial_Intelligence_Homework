@@ -32,7 +32,9 @@ test_labels = test_df['label'].values
 
 # 2. 文本向量化
 # 使用Tokenizer将文本转换为数字序列
-tokenizer = Tokenizer(num_words=5000)  # 可以根据词汇量调整
+nums_words = 65590  # 可以根据词汇量调整
+
+tokenizer = Tokenizer(nums_words)  # 可以根据词汇量调整
 tokenizer.fit_on_texts(train_texts)
 
 train_sequences = tokenizer.texts_to_sequences(train_texts)
@@ -45,7 +47,7 @@ test_padded = pad_sequences(test_sequences, maxlen=max_length)
 
 # 3. 构建CNN模型
 model = Sequential()
-model.add(Embedding(5000, 128, input_length=max_length))
+model.add(Embedding(nums_words, 128, input_length=max_length))
 model.add(Conv1D(filters=64, kernel_size=5, activation='relu'))
 model.add(MaxPooling1D(pool_size=4))
 model.add(Flatten())
