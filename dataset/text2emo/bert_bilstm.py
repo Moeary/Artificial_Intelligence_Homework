@@ -5,7 +5,8 @@ from transformers import BertTokenizer, TFBertModel
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, Bidirectional
-
+import tensorflow as tf
+print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
 # 1. 数据加载和预处理
 train_df = pd.read_csv("usual_train.csv", encoding='utf-8')
 test_df = pd.read_csv("usual_test_labeled.csv", encoding='utf-8')
