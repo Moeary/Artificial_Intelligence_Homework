@@ -32,7 +32,7 @@ test_labels = test_df['label'].values
 
 # 2. 文本向量化
 # 使用Tokenizer将文本转换为数字序列
-nums_words = 65590  # 可以根据词汇量调整
+nums_words = 65590  # 微博情感分析器总共有的词汇量
 
 tokenizer = Tokenizer(nums_words)  # 可以根据词汇量调整
 tokenizer.fit_on_texts(train_texts)
