@@ -1,126 +1,205 @@
-import pandas as pd
+import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset
+from torchvision import datasets, models, transforms
+from sklearn.metrics import confusion_matrix, classification_report
 
-
-import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.utils import to_categorical
-
-from sklearn.metrics import confusion_matrix , classification_report 
-from sklearn.preprocessing import LabelBinarizer
-from sklearn.metrics import roc_curve, auc, roc_auc_score
-
-from IPython.display import clear_output
-import warnings
-warnings.filterwarnings('ignore')
-
+# 设置设备
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# 数据路径
 train_dir = "./dataset/train"
 test_dir = "./dataset/test"
 
-SEED = 12
-IMG_HEIGHT = 48
-IMG_WIDTH = 48
+# 超参数
+IMG_HEIGHT = 75
+IMG_WIDTH = 75
 BATCH_SIZE = 64
 EPOCHS = 30
-FINE_TUNING_EPOCHS = 20
-LR = 0.01
 NUM_CLASSES = 6
-EARLY_STOPPING_CRITERIA=3
-CLASS_LABELS  = ['Anger', 'Fear', 'Happy', 'Neutral', 'Sadness', "Surprise"]
-CLASS_LABELS_EMOJIS = ["👿", "😱" , "😊" , "😐 ", "😔" , "😲" ]
+CLASS_LABELS = ['Anger', 'Fear', 'Happy', 'Neutral', 'Sadness', "Surprise"]
 
-preprocess_fun = tf.keras.applications.densenet.preprocess_input
+# 数据预处理
+data_transforms = {
+    'train': transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomResizedCrop(IMG_HEIGHT),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+    'test': transforms.Compose([
+        transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+}
 
-train_datagen = ImageDataGenerator(horizontal_flip=True,
-                                   width_shift_range=0.1,
-                                   height_shift_range=0.05,
-                                   rescale = 1./255,
-                                   validation_split = 0.2,
-                                   preprocessing_function=preprocess_fun
-                                  )
-test_datagen = ImageDataGenerator(rescale = 1./255,
-                                  validation_split = 0.2,
-                                  preprocessing_function=preprocess_fun)
+# 加载数据
+image_datasets = {
+    'train': datasets.ImageFolder(os.path.join(train_dir), data_transforms['train']),
+    'val': datasets.ImageFolder(os.path.join(train_dir), data_transforms['val']),
+    'test': datasets.ImageFolder(os.path.join(test_dir), data_transforms['test'])
+}
 
-train_generator = train_datagen.flow_from_directory(directory = train_dir,
-                                                    target_size = (IMG_HEIGHT ,IMG_WIDTH),
-                                                    batch_size = BATCH_SIZE,
-                                                    shuffle  = True , 
-                                                    color_mode = "rgb",
-                                                    class_mode = "categorical",
-                                                    subset = "training",
-                                                    seed = 12
-                                                   )
+dataloaders = {
+    'train': DataLoader(image_datasets['train'], batch_size=BATCH_SIZE, shuffle=True, num_workers=4),
+    'val': DataLoader(image_datasets['val'], batch_size=BATCH_SIZE, shuffle=True, num_workers=4),
+    'test': DataLoader(image_datasets['test'], batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+}
 
-validation_generator = test_datagen.flow_from_directory(directory = train_dir,
-                                                         target_size = (IMG_HEIGHT ,IMG_WIDTH),
-                                                         batch_size = BATCH_SIZE,
-                                                         shuffle  = True , 
-                                                         color_mode = "rgb",
-                                                         class_mode = "categorical",
-                                                         subset = "validation",
-                                                         seed = 12
-                                                        )
+dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
+class_names = image_datasets['train'].classes
 
-test_generator = test_datagen.flow_from_directory(directory = test_dir,
-                                                   target_size = (IMG_HEIGHT ,IMG_WIDTH),
-                                                    batch_size = BATCH_SIZE,
-                                                    shuffle  = False , 
-                                                    color_mode = "rgb",
-                                                    class_mode = "categorical",
-                                                    seed = 12
-                                                  )
+# 定义模型
+def create_resnet34_model(num_classes):
+    model = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, num_classes)
+    return model
 
-# Helper Functions
-def display_one_image(image, title, subplot, color):
-    plt.subplot(subplot)
-    plt.axis('off')
-    plt.imshow(image)
-    plt.title(title, fontsize=16)
-    
-def display_nine_images(images, titles, title_colors=None):
-    subplot = 331
-    plt.figure(figsize=(13,13))
-    for i in range(9):
-        color = 'black' if title_colors is None else title_colors[i]
-        display_one_image(images[i], titles[i], 331+i, color)
-    plt.tight_layout()
-    plt.subplots_adjust(wspace=0.1, hspace=0.1)
-    plt.show()
+def create_googlenet_model(num_classes):
+    model = models.googlenet(weights=models.GoogLeNet_Weights.IMAGENET1K_V1)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, num_classes)
+    return model
 
-def image_title(label, prediction):
-  # Both prediction (probabilities) and label (one-hot) are arrays with one item per class.
-    class_idx = np.argmax(label, axis=-1)
-    prediction_idx = np.argmax(prediction, axis=-1)
-    if class_idx == prediction_idx:
-        return f'{CLASS_LABELS[prediction_idx]} [correct]', 'black'
-    else:
-        return f'{CLASS_LABELS[prediction_idx]} [incorrect, should be {CLASS_LABELS[class_idx]}]', 'red'
+class FastCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(FastCNN, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(128 * (IMG_HEIGHT // 8) * (IMG_WIDTH // 8), 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(512, num_classes)
+        )
 
-def get_titles(images, labels, model):
-    predictions = model.predict(images)
-    titles, colors = [], []
-    for label, prediction in zip(classes, predictions):
-        title, color = image_title(label, prediction)
-        titles.append(title)
-        colors.append(color)
-    return titles, colors
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 
-img_datagen = ImageDataGenerator(rescale = 1./255)
-img_generator = img_datagen.flow_from_directory(directory = train_dir,
-                                                   target_size = (IMG_HEIGHT ,IMG_WIDTH),
-                                                    batch_size = BATCH_SIZE,
-                                                    shuffle  = True , 
-                                                    color_mode = "rgb",
-                                                    class_mode = "categorical",
-                                                    seed = 12
-                                                  )
-clear_output()
+# 创建模型
+resnet34_model = create_resnet34_model(NUM_CLASSES).to(device)
+googlenet_model = create_googlenet_model(NUM_CLASSES).to(device)
+fast_cnn_model = FastCNN(NUM_CLASSES).to(device)
 
-images, classes = next(img_generator)
-class_idxs = np.argmax(classes, axis=-1) 
-labels = [CLASS_LABELS[idx] for idx in class_idxs]
-display_nine_images(images, labels)
+models = [resnet34_model, googlenet_model, fast_cnn_model]
+model_names = ["ResNet34", "GoogLeNet", "Fast-CNN"]
+
+# 训练和评估模型
+def train_model(model, criterion, optimizer, num_epochs=25):
+    best_model_wts = model.state_dict()
+    best_acc = 0.0
+
+    for epoch in range(num_epochs):
+        print(f'Epoch {epoch}/{num_epochs - 1}')
+        print('-' * 10)
+
+        # 每个epoch都有训练和验证阶段
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()  # 设置模型为训练模式
+            else:
+                model.eval()   # 设置模型为评估模式
+
+            running_loss = 0.0
+            running_corrects = 0
+
+            # 遍历数据
+            for inputs, labels in dataloaders[phase]:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+
+                # 前向传播
+                # 只在训练阶段计算梯度
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
+
+                    # 反向传播 + 优化，只在训练阶段进行
+                    if phase == 'train':
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+
+                # 统计
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+
+            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+            print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+
+            # 深度复制模型
+            if phase == 'val' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = model.state_dict()
+
+        print()
+
+    print(f'Best val Acc: {best_acc:4f}')
+
+    # 加载最佳模型权重
+    model.load_state_dict(best_model_wts)
+    return model
+
+# 定义损失函数和优化器
+criterion = nn.CrossEntropyLoss()
+
+def main():
+    for model, name in zip(models, model_names):
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        print(f"Training {name} model...")
+        model = train_model(model, criterion, optimizer, num_epochs=EPOCHS)
+        torch.save(model.state_dict(), f"{name}_model.pth")
+        print(f"{name} model saved.")
+
+    # 评估模型
+    def evaluate_model(model, dataloader):
+        model.eval()
+        running_corrects = 0
+
+        for inputs, labels in dataloader:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            with torch.no_grad():
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+
+            running_corrects += torch.sum(preds == labels.data)
+
+        accuracy = running_corrects.double() / dataset_sizes['test']
+        return accuracy
+
+    for model, name in zip(models, model_names):
+        accuracy = evaluate_model(model, dataloaders['test'])
+        print(f"{name} Test Accuracy: {accuracy:.4f}")
+
+if __name__ == '__main__':
+    main()

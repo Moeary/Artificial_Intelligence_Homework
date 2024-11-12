@@ -37,9 +37,9 @@ graph TD
 
 ### 图片帧情感分类
 
-使用数据集在[kaggle](https://www.kaggle.com/datasets/ananthu017/emotion-detection-fer)上面可以找到,为48*48的低清图片
+使用数据集为FER,在[kaggle](https://www.kaggle.com/datasets/ananthu017/emotion-detection-fer)上面可以找到,为48*48的低清图片,原数据集有7种情感标签,分别为happiness, neutral, sadness, anger, surprise, disgust, fear 为符合我们之前的语言情感分析的标签,删掉了disgust对应的数据集,保持6类情感标签与上述一致
 
-主要使用CNN网络变形格式进行图片帧的图像分类识别,同时在最后的全连接层输出对应的每一个类的分类结果置信度
+识别部分主要使用CNN网络变形格式(Resnet34\GoogLeNet\Fast-CNN)进行图片帧的图像分类识别,同时在最后的全连接层输出对应的每一个类的分类结果置信度
 
 ### 加权识别
 
