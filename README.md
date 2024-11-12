@@ -2,7 +2,7 @@
 
 ## 理论基础
 
-提前将视频分成音频部分与图像部分,其中音频部分使用Kaldi\ESPNet\WeNet进行识别,然后识别出来的中文文字使用Bilstm\CNN\RNN进行情感分析,视频部分裁剪成视频帧,然后使用Resnet34\GoogLeNet\Fast-CNN进行图片情感的分类,两者加权出一个分类结果,取最高的作为这一段视频的分类结果	
+提前将视频分成音频部分与图像部分,其中音频部分使用Kaldi\ESPNet\WeNet\Whisper进行识别,然后识别出来的中文文字使用Bilstm\CNN进行情感分析,视频部分裁剪成视频帧,然后使用Resnet34\GoogLeNet\Fast-CNN进行图片情感的分类,两者加权出一个分类结果,取最高的作为这一段视频的分类结果	
 
 ```mermaid
 graph TD
@@ -37,8 +37,14 @@ graph TD
 
 ### 图片帧情感分类
 
+使用数据集在[kaggle](https://www.kaggle.com/datasets/ananthu017/emotion-detection-fer)上面可以找到,为48*48的低清图片
+
 主要使用CNN网络变形格式进行图片帧的图像分类识别,同时在最后的全连接层输出对应的每一个类的分类结果置信度
+
+### 加权识别
 
 最后同时将图片帧和语音分类的结果各按照50%进行加权
 
 输出置信度最高的那一个作为情感分类的结果
+
+### 网页部署
