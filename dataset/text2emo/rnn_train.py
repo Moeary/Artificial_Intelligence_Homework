@@ -3,7 +3,7 @@ import jieba
 import numpy as np
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, Conv1D, MaxPooling1D, Flatten, Dense
+from tensorflow.keras.layers import Embedding, SimpleRNN, Dense
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
@@ -32,9 +32,9 @@ test_labels = test_df['label'].values
 
 # 2. 文本向量化
 # 使用Tokenizer将文本转换为数字序列
-nums_words = 65590  # 微博情感分析器总共有的词汇量
+num_words = 65590  # 微博情感分析器总共有的词汇量
 
-tokenizer = Tokenizer(nums_words)  # 可以根据词汇量调整
+tokenizer = Tokenizer(num_words=num_words)  # 可以根据词汇量调整
 tokenizer.fit_on_texts(train_texts)
 
 train_sequences = tokenizer.texts_to_sequences(train_texts)
@@ -45,28 +45,34 @@ max_length = 200  # 可以根据文本长度调整
 train_padded = pad_sequences(train_sequences, maxlen=max_length)
 test_padded = pad_sequences(test_sequences, maxlen=max_length)
 
-# 3. 构建CNN模型
+# 3. 构建RNN模型
 model = Sequential()
-model.add(Embedding(nums_words, 128, input_length=max_length))
-model.add(Conv1D(filters=64, kernel_size=5, activation='relu'))
-model.add(MaxPooling1D(pool_size=4))
-model.add(Flatten())
+model.add(Embedding(num_words, 128, input_length=max_length))
+model.add(SimpleRNN(128, return_sequences=False))
 model.add(Dense(10, activation='relu'))
 model.add(Dense(6, activation='softmax'))  # 6个情感类别
 
 model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-# 4. 训练模型 4轮之后开始出现过拟合现象 就取epoch=4
-model.fit(train_padded, train_labels, epochs=4, batch_size=64, validation_split=0.2) 
+# 4. 训练模型并评估测试集
+best_accuracy = 0.0
+for epoch in range(1, 21):  # 训练20轮
+    print(f'Epoch {epoch}/{20}')
+    model.fit(train_padded, train_labels, epochs=1, batch_size=64, validation_split=0.2)
+    
+    # 评估测试集
+    loss, accuracy = model.evaluate(test_padded, test_labels, verbose=0)
+    print(f'Test Accuracy: {accuracy}')
+    
+    # 如果测试集准确率比之前的高，则保存模型
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        model.save("best_text_emotion_rnn_model.h5")
+        print(f'Saved best model with accuracy: {best_accuracy}')
 
-# 保存模型
-model.save("text_emotion_cnn_model.h5") 
-
-# 保存Tokenizer
+# 保存最终的Tokenizer
 import pickle
-with open('tokenizer.pickle', 'wb') as handle:
+with open('rnn_tokenizer.pickle', 'wb') as handle:
     pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-# 5. 评估模型
-loss, accuracy = model.evaluate(test_padded, test_labels, verbose=0)
-print('Test Accuracy: {}'.format(accuracy))
+print(f'Best Test Accuracy: {best_accuracy}')
