@@ -2,7 +2,7 @@
 
 ## 理论基础
 
-提前将视频分成音频部分与图像部分,其中音频部分使用Kaldi\ESPNet\WeNet\Whisper进行识别,然后识别出来的中文文字使用Bert-Bilstm\CNN\RNN进行情感分析,视频部分裁剪成视频帧,然后使用Resnet34\GoogLeNet\Fast-CNN进行图片情感的分类,两者加权出一个分类结果,取最高的作为这一段视频的分类结果	
+提前将视频分成音频部分与图像部分,其中音频部分使用Whisper进行识别,然后识别出来的中文文字使用Bert-Bilstm\CNN\RNN进行情感分析,视频部分裁剪成视频帧,然后使用Resnet34\GoogLeNet\Fast-CNN进行图片情感的分类,两者加权出一个分类结果,取最高的作为这一段视频的分类结果	
 
 ```mermaid
 graph TD
@@ -19,6 +19,7 @@ graph TD
 
 ### 语音识别
 
+在这里我们使用OpenAI推出的语音转文字大模型Whisper来识别音频中的语言,并转成对应srt格式的文字,方便后续的识别
 
 ### 情感标签
 
