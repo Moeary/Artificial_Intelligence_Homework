@@ -113,6 +113,38 @@ def predict_text_emotion(text, text_model_name):
     # 创建标签和置信度的字典
     return {i: float(confidence[i]) for i in range(len(confidence))}
 
+def predict_text_emotion1(text, text_model_name):
+    # 加载情绪识别模型
+    model_path = f"model/text2emo/{text_model_name}_model.h5"
+    if text_model_name == "bert-bilstm":
+        loaded_model = load_model(model_path, custom_objects={"TFBertModel": TFBertModel})
+        tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
+        # 分词和向量化
+        inputs = tokenizer.encode_plus(text, add_special_tokens=True, max_length=max_length, truncation=True, padding='max_length', return_tensors='tf')
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
+        text_padded = [input_ids, attention_mask]
+    else:
+        loaded_model = load_model(model_path)
+        # 加载Tokenizer (需要与训练时使用的Tokenizer相同)
+        tokenizer_path = f"model/text2emo/{text_model_name}_tokenizer.pickle"
+        with open(tokenizer_path, 'rb') as handle:
+            tokenizer = pickle.load(handle)
+        # 分词
+        text_seq = " ".join(jieba.cut(text))
+        # 向量化
+        text_seq = tokenizer.texts_to_sequences([text_seq])
+        text_padded = pad_sequences(text_seq, maxlen=max_length)
+    
+    # 预测情绪
+    prediction = loaded_model.predict(text_padded)
+    # 获取每个标签的置信度
+    confidence = prediction[0]
+
+    # Convert predictions to emotion labels
+    emotions = format_predictions({i: float(confidence[i]) for i in range(len(confidence))})
+    return emotions
+
 # 处理视频
 def process_video(input_video_path, image_model_name, text_model_name, text_weight):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -189,6 +221,45 @@ def process_video(input_video_path, image_model_name, text_model_name, text_weig
 
     return output_video_path
 
+def format_predictions(predictions):
+    """Convert numerical predictions to emotion labels with percentages"""
+    return {label_map[i]: float(prob) for i, prob in predictions.items()}
+
+
+def transcribe(audio):
+    result = whisper_model.transcribe(audio, language="zh")
+    segments = result["segments"]
+    
+    srt_output = ""
+    for i, segment in enumerate(segments):
+        start_time = segment["start"]
+        end_time = segment["end"]
+        text = segment["text"]
+        
+        start_time_str = f"{int(start_time // 3600):02}:{int((start_time % 3600) // 60):02}:{int(start_time % 60):02},{int((start_time % 1) * 1000):03}"
+        end_time_str = f"{int(end_time // 3600):02}:{int((end_time % 3600) // 60):02}:{int(end_time % 60):02},{int((end_time % 1) * 1000):03}"
+        
+        srt_output += f"{i + 1}\n{start_time_str} --> {end_time_str}\n{text}\n\n"
+    
+    return srt_output
+
+def predict_image(image, model_name):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if model_name == "FastCNN":
+        model = FastCNN().to(device)
+        model.load_state_dict(torch.load('model/img2emo/fast-cnn_model.pth', map_location=device, weights_only=True))
+    elif model_name == "ResNet":
+        model = ResNetModel().to(device)
+        model.load_state_dict(torch.load('model/img2emo/resnet_model.pth', map_location=device, weights_only=True))
+    else:  # GoogLeNet
+        model = GoogLeNetModel().to(device)
+        model.load_state_dict(torch.load('model/img2emo/googlenet_model.pth', map_location=device, weights_only=True))
+    
+    model.eval()
+    predictions = predict_image_emotion(image, model)
+    return format_predictions(predictions)
+
+
 # Gradio界面
 video_input = gr.Video(label="Input Video")
 image_model_input = gr.Radio(choices=["ResNet", "GoogLeNet", "FastCNN"], label="Select Image Model",value="ResNet")
@@ -200,4 +271,53 @@ def process_video_gradio(input_video_path, image_model_name, text_model_name, te
     output_video_path = process_video(input_video_path, image_model_name, text_model_name,text_weight)
     return output_video_path
 
-gr.Interface(fn=process_video_gradio, inputs=[video_input, image_model_input, text_model_input,text_weight_input], outputs=video_output, title="Video Emotion Prediction", description="Upload a video and select models to predict emotions in the video.").launch()
+def create_demo():
+    with gr.Blocks() as demo:
+        gr.Markdown("# 多功能情感分析系统")
+        
+        with gr.Tabs():
+            # 语音转文字标签页
+            with gr.Tab("语音转文字"):
+                audio_input = gr.Audio(type="filepath", label="上传音频文件或录制")
+                stt_output = gr.Textbox(label="识别结果 (SRT格式)")
+                stt_button = gr.Button("开始转换")
+                stt_button.click(transcribe, inputs=audio_input, outputs=stt_output)
+
+            # 文字情感分析标签页
+            with gr.Tab("文字情感分析"):
+                text_input = gr.Textbox(lines=2, placeholder="请输入要分析的文本")
+                text_model = gr.Radio(choices=["cnn", "rnn", "bert-bilstm"], label="选择模型", value="cnn")
+                text_output = gr.Label(num_top_classes=6)
+                text_button = gr.Button("分析情感")
+                text_button.click(predict_text_emotion1, inputs=[text_input, text_model], outputs=text_output)
+
+            # 图像情感分析标签页
+            with gr.Tab("图像情感分析"):
+                image_input = gr.Image()
+                image_model = gr.Radio(choices=["ResNet", "GoogLeNet", "FastCNN"], label="选择模型", value="ResNet")
+                image_output = gr.Label(num_top_classes=6)
+                image_button = gr.Button("分析情感")
+                image_button.click(predict_image, inputs=[image_input, image_model], outputs=image_output)
+
+            # 视频情感分析标签页
+            with gr.Tab("视频情感分析"):
+                video_input = gr.Video(label="上传视频")
+                with gr.Row():
+                    image_model_input = gr.Radio(choices=["ResNet", "GoogLeNet", "FastCNN"], 
+                                               label="图像模型", value="ResNet")
+                    text_model_input = gr.Radio(choices=["cnn", "rnn", "bert-bilstm"], 
+                                              label="文字模型", value="cnn")
+                text_weight_input = gr.Slider(minimum=0, maximum=1, step=0.01, 
+                                           value=0.333, label="文字权重")
+                video_output = gr.Video(label="分析结果")
+                video_button = gr.Button("开始分析")
+                video_button.click(process_video_gradio, 
+                                 inputs=[video_input, image_model_input, 
+                                        text_model_input, text_weight_input], 
+                                 outputs=video_output)
+
+    return demo
+
+if __name__ == "__main__":
+    demo = create_demo()
+    demo.launch()
