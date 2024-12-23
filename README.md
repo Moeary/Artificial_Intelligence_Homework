@@ -62,4 +62,7 @@ CNN 对应测试集acc率为63.48%
 
 ### 网页部署
 
-TBC... 可能会用Gradio做网页端
+输入以下指令,即可在浏览器中部署服务
+```python
+python main.py
+```
